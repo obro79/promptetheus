@@ -1,4 +1,5 @@
 import promptetheus as pt
+from promptetheus import config as config_module
 from promptetheus.trace import resolve_transport
 from promptetheus.transport import DurableHTTPTransport, InMemoryTransport, LocalSpoolTransport
 
@@ -56,6 +57,7 @@ def test_trace_start_context_manager_records_goal_check():
 
 def test_resolve_transport_defaults_to_local_spool(tmp_path, monkeypatch):
     monkeypatch.delenv("PROMPTETHEUS_API_URL", raising=False)
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
 
     transport = resolve_transport(spool_dir=str(tmp_path))
 
@@ -101,4 +103,3 @@ def test_screenshot_uploads_artifact_identity():
     shot = next(e for e in transport.events if e["type"] == "screenshot")
     assert shot["payload"]["artifact_id"] == "artifact_99"
     assert "storage_path" in shot["payload"]
-

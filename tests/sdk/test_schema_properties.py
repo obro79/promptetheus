@@ -50,13 +50,25 @@ def well_formed_events(draw: st.DrawFn) -> dict:
     session_id = draw(_tokens)
     nonce = draw(_tokens)
     seq = draw(st.integers(min_value=0, max_value=1_000_000))
+    event_type = draw(st.sampled_from(EVENT_TYPES))
+    payload = (
+        {
+            "model": draw(_tokens),
+            "prompt_ref": f"artifact://{draw(_tokens)}",
+            "input_tokens": draw(st.integers(min_value=0, max_value=1_000_000)),
+            "output_tokens": draw(st.integers(min_value=0, max_value=1_000_000)),
+            "latency_ms": draw(st.integers(min_value=0, max_value=1_000_000)),
+        }
+        if event_type == "llm_call"
+        else draw(_payloads)
+    )
     event: dict = {
-        "type": draw(st.sampled_from(EVENT_TYPES)),
+        "type": event_type,
         "session_id": session_id,
         "timestamp": draw(st.text(min_size=0, max_size=32)),
         "seq": seq,
         "idempotency_key": f"{session_id}:{nonce}:{seq}",
-        "payload": draw(_payloads),
+        "payload": payload,
     }
     # Optionally attach a well-typed metadata mapping.
     if draw(st.booleans()):

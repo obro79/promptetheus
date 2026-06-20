@@ -47,7 +47,13 @@ def read_spool_records(spool_dir):
     if not spool_dir.exists():
         return records
     for path in spool_dir.glob("*.jsonl"):
-        records.extend(read_jsonl(path))
+        try:
+            records.extend(read_jsonl(path))
+        except FileNotFoundError:
+            # The durable transport may rotate/replay a spool file between glob
+            # and read while its background flusher is active. Treat that as an
+            # empty poll and let the caller's wait loop retry.
+            continue
     return records
 
 

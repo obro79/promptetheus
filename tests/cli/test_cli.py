@@ -97,6 +97,62 @@ def test_doctor_never_leaks_api_key(capsys, monkeypatch, tmp_path):
     assert rc == 1
 
 
+def test_mcp_install_codex_prints_hosted_stdio_bridge(capsys):
+    rc = cli.main(
+        [
+            "mcp",
+            "install",
+            "--client",
+            "codex",
+            "--workspace",
+            "team alpha",
+            "--project-ref",
+            "abc123",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "https://mcp.promptetheus.dev/supabase/team%20alpha/abc123" in out
+    assert '[mcp_servers."promptetheus"]' in out
+    assert 'args = ["-y", "mcp-remote"' in out
+    assert "read-only Supabase evidence scoped to this project" in out
+
+
+def test_mcp_install_cursor_prints_workspace_json(capsys):
+    rc = cli.main(
+        [
+            "mcp",
+            "install",
+            "--client",
+            "cursor",
+            "--workspace",
+            "team",
+            "--project-ref",
+            "ref",
+            "--server-name",
+            "pt-evidence",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Cursor workspace .cursor/mcp.json snippet" in out
+    assert '"pt-evidence"' in out
+    assert '"command": "npx"' in out
+    assert '"mcp-remote"' in out
+
+
+def test_mcp_without_install_preserves_stdio_server(monkeypatch):
+    called = False
+
+    def fake_run_mcp():
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(cli, "_run_mcp", fake_run_mcp)
+    assert cli.main(["mcp"]) == 0
+    assert called is True
+
+
 # -- sessions / export / replay / import ------------------------------------
 
 

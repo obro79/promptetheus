@@ -19,12 +19,14 @@ import argparse
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 # Host/port for the local FastAPI ingestion gateway (see CLAUDE.md "Ports").
 DEV_HOST = "0.0.0.0"
 DEV_PORT = 4318
 
 DEFAULT_SPOOL_DIR = ".promptetheus/spool"
+DEFAULT_MCP_BASE_URL = "https://mcp.promptetheus.dev/supabase"
 _DEAD_LETTER_DIR = "dead-letter"
 
 
@@ -89,8 +91,39 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser(
         "dev", help="Boot the local FastAPI ingestion gateway on :4318"
     )
-    subparsers.add_parser(
+    mcp_p = subparsers.add_parser(
         "mcp", help="Boot the incident-context MCP server over stdio"
+    )
+    mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
+    mcp_install_p = mcp_sub.add_parser(
+        "install",
+        help="Print hosted Promptetheus MCP client config for a Supabase project",
+    )
+    mcp_install_p.add_argument(
+        "--client",
+        choices=("codex", "claude", "cursor"),
+        required=True,
+        help="MCP client config format to print",
+    )
+    mcp_install_p.add_argument(
+        "--workspace",
+        required=True,
+        help="Promptetheus workspace slug or id",
+    )
+    mcp_install_p.add_argument(
+        "--project-ref",
+        required=True,
+        help="Supabase project ref to scope evidence reads",
+    )
+    mcp_install_p.add_argument(
+        "--server-name",
+        default="promptetheus",
+        help="MCP server name in the generated client config",
+    )
+    mcp_install_p.add_argument(
+        "--hosted-url",
+        default=DEFAULT_MCP_BASE_URL,
+        help=f"hosted MCP base URL (default {DEFAULT_MCP_BASE_URL})",
     )
     subparsers.add_parser("version", help="Print the installed Promptetheus version")
     subparsers.add_parser(
@@ -169,6 +202,14 @@ def main(argv: list[str] | None = None) -> int:
         _run_dev()
         return 0
     if args.command == "mcp":
+        if getattr(args, "mcp_command", None) == "install":
+            return _cmd_mcp_install(
+                args.client,
+                args.workspace,
+                args.project_ref,
+                args.server_name,
+                args.hosted_url,
+            )
         _run_mcp()
         return 0
     if args.command == "doctor":
@@ -192,6 +233,84 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 0
+
+
+# -- mcp install ------------------------------------------------------------
+
+
+def _cmd_mcp_install(
+    client: str,
+    workspace: str,
+    project_ref: str,
+    server_name: str,
+    hosted_url: str,
+) -> int:
+    if not workspace.strip():
+        print("--workspace must not be empty")
+        return 2
+    if not project_ref.strip():
+        print("--project-ref must not be empty")
+        return 2
+    if not server_name.strip():
+        print("--server-name must not be empty")
+        return 2
+
+    url = _build_mcp_url(hosted_url, workspace, project_ref)
+    print("Promptetheus hosted MCP")
+    print(f"  URL        : {url}")
+    print(f"  workspace  : {workspace}")
+    print(f"  project_ref: {project_ref}")
+    print("  access     : read-only Supabase evidence scoped to this project")
+    print()
+
+    if client == "codex":
+        print("Codex config snippet:")
+        print(_format_codex_mcp_config(server_name, url))
+        return 0
+    if client == "claude":
+        print("Claude Desktop config snippet:")
+        print(_format_json_mcp_config(server_name, url))
+        return 0
+    if client == "cursor":
+        print("Cursor workspace .cursor/mcp.json snippet:")
+        print(_format_json_mcp_config(server_name, url))
+        return 0
+
+    print(f"Unsupported MCP client: {client}")
+    return 2
+
+
+def _build_mcp_url(hosted_url: str, workspace: str, project_ref: str) -> str:
+    base = hosted_url.rstrip("/")
+    workspace_slug = quote(workspace.strip(), safe="")
+    project_slug = quote(project_ref.strip(), safe="")
+    return f"{base}/{workspace_slug}/{project_slug}"
+
+
+def _format_codex_mcp_config(server_name: str, url: str) -> str:
+    escaped_url = url.replace("\\", "\\\\").replace('"', '\\"')
+    escaped_name = server_name.strip().replace("\\", "\\\\").replace('"', '\\"')
+    return "\n".join(
+        (
+            f'[mcp_servers."{escaped_name}"]',
+            'command = "npx"',
+            f'args = ["-y", "mcp-remote", "{escaped_url}"]',
+        )
+    )
+
+
+def _format_json_mcp_config(server_name: str, url: str) -> str:
+    return json.dumps(
+        {
+            "mcpServers": {
+                server_name.strip(): {
+                    "command": "npx",
+                    "args": ["-y", "mcp-remote", url],
+                }
+            }
+        },
+        indent=2,
+    )
 
 
 # -- doctor -----------------------------------------------------------------

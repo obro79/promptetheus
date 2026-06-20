@@ -28,6 +28,17 @@ python your_agent.py
 
 With `transport="auto"`, the SDK probes `http://127.0.0.1:4318/health` before falling back to a local spool.
 
+## MCP install snippets
+
+Print hosted MCP client config without mutating global files:
+
+```bash
+promptetheus mcp install --client codex --workspace acme --project-ref abcdefghijklmnopqrst
+```
+
+The generated config uses a stdio bridge to the hosted Promptetheus MCP URL and
+defaults to read-only Supabase evidence scoped to the supplied project ref.
+
 See the [project docs](https://github.com/obro79/promptetheus) for architecture and demo plans.
 
 **Status:** Pre-alpha (`0.0.1` reserves the PyPI name; SDK + State-0 spine in progress.)

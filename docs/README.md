@@ -7,6 +7,7 @@ Read these when implementing or coordinating work:
 - [Product Strategy](product-strategy.md)
 - [Demo Plan](demo-plan.md)
 - [SDK Architecture](sdk-architecture.md)
+- [Promptetheus MCP](mcp.md)
 - [Technical Architecture](architecture/technical-architecture.md)
 - [Components](architecture/components.md)
 - [Implementation Plan](architecture/implementation-plan.md)

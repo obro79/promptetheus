@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "packages" / "promptetheus"
+sys.path.insert(0, str(PACKAGE_ROOT))
+
+from promptetheus import cli  # noqa: E402
+from promptetheus import config as config_module  # noqa: E402
+
+
+def _isolate_config(monkeypatch, tmp_path):
+    """Point load_config at a nonexistent file and clear env so the developer's
+    real ~/.promptetheus/config.toml never leaks into a CLI test."""
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    for var in (
+        "PROMPTETHEUS_API_URL",
+        "PROMPTETHEUS_API_KEY",
+        "PROMPTETHEUS_PROJECT",
+        "PROMPTETHEUS_ENVIRONMENT",
+        "PROMPTETHEUS_SAMPLE_RATE",
+        "PROMPTETHEUS_REDACT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_version(capsys):
+    from promptetheus import __version__
+
+    assert cli.main(["version"]) == 0
+    assert capsys.readouterr().out.strip() == __version__
+
+
+def test_spool_list_absent_dir(capsys, tmp_path):
+    rc = cli.main(["spool", "list", "--dir", str(tmp_path / "nope")])
+    assert rc == 0
+    assert "nothing pending" in capsys.readouterr().out.lower()
+
+
+def test_spool_list_counts_files(capsys, tmp_path):
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    (spool / "sess_a.jsonl").write_text('{"seq":1}\n{"seq":2}\n', encoding="utf-8")
+    dead = spool / "dead-letter"
+    dead.mkdir()
+    (dead / "sess_b.jsonl").write_text('{"seq":1}\n', encoding="utf-8")
+
+    rc = cli.main(["spool", "list", "--dir", str(spool)])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "2 event(s)" in out  # 2 pending
+    assert "1 event(s)" in out  # 1 dead-lettered
+
+
+def test_spool_purge_keeps_dead_letter_by_default(capsys, tmp_path):
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    (spool / "sess_a.jsonl").write_text('{"seq":1}\n', encoding="utf-8")
+    dead = spool / "dead-letter"
+    dead.mkdir()
+    (dead / "sess_b.jsonl").write_text('{"seq":1}\n', encoding="utf-8")
+
+    assert cli.main(["spool", "purge", "--dir", str(spool)]) == 0
+    assert not (spool / "sess_a.jsonl").exists()
+    assert (dead / "sess_b.jsonl").exists()  # dead-letter retained
+
+
+def test_spool_purge_dead_letter_flag(tmp_path):
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    dead = spool / "dead-letter"
+    dead.mkdir()
+    (dead / "sess_b.jsonl").write_text('{"seq":1}\n', encoding="utf-8")
+    assert cli.main(["spool", "purge", "--dir", str(spool), "--dead-letter"]) == 0
+    assert not (dead / "sess_b.jsonl").exists()
+
+
+def test_doctor_no_endpoint_returns_nonzero(capsys, monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    rc = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "no api_url" in out.lower()
+
+
+def test_doctor_never_leaks_api_key(capsys, monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    monkeypatch.setenv("PROMPTETHEUS_API_URL", "http://127.0.0.1:9")  # unreachable
+    monkeypatch.setenv("PROMPTETHEUS_API_KEY", "super-secret-key-value")
+
+    rc = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "super-secret-key-value" not in out  # never printed
+    assert "api_key      : set" in out
+    assert "UNREACHABLE" in out  # graceful, no traceback
+    assert rc == 1
+
+
+# -- sessions / export / replay / import ------------------------------------
+
+
+def _spool_with_session(tmp_path):
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    (spool / "sess_x.jsonl").write_text(
+        '{"type":"user_message","session_id":"sess_x","seq":0,"idempotency_key":"k0","payload":{"content":"hi"}}\n'
+        '{"type":"state_change","session_id":"sess_x","seq":1,"idempotency_key":"k1","payload":{"name":"span_start","span_name":"step"},"span_id":"sp1"}\n'
+        '{"type":"agent_message","session_id":"sess_x","seq":2,"idempotency_key":"k2","payload":{"content":"working"},"span_id":"sp1"}\n'
+        '{"type":"state_change","session_id":"sess_x","seq":3,"idempotency_key":"k3","payload":{"name":"span_end","span_name":"step"},"span_id":"sp1"}\n',
+        encoding="utf-8",
+    )
+    return spool
+
+
+def test_sessions_lists_spooled(capsys, tmp_path):
+    spool = _spool_with_session(tmp_path)
+    assert cli.main(["sessions", "--dir", str(spool)]) == 0
+    out = capsys.readouterr().out
+    assert "sess_x" in out and "4 event(s)" in out
+
+
+def test_sessions_empty(capsys, tmp_path):
+    assert cli.main(["sessions", "--dir", str(tmp_path / "nope")]) == 0
+    assert "no sessions" in capsys.readouterr().out.lower()
+
+
+def test_export_to_file_and_stdout(capsys, tmp_path):
+    spool = _spool_with_session(tmp_path)
+    out_file = tmp_path / "export.json"
+    assert cli.main(["export", "sess_x", "--dir", str(spool), "--out", str(out_file)]) == 0
+    import json
+
+    doc = json.loads(out_file.read_text())
+    assert doc["session_id"] == "sess_x"
+    assert doc["summary"]["count"] == 4
+    assert len(doc["events"]) == 4
+
+
+def test_export_missing_session_nonzero(capsys, tmp_path):
+    spool = _spool_with_session(tmp_path)
+    assert cli.main(["export", "ghost", "--dir", str(spool)]) == 1
+
+
+def test_replay_prints_timeline_with_span_indent(capsys, tmp_path):
+    spool = _spool_with_session(tmp_path)
+    assert cli.main(["replay", "sess_x", "--dir", str(spool)]) == 0
+    out = capsys.readouterr().out
+    assert "[0] user_message" in out
+    assert "span_start" in out
+    # the agent_message inside the span is indented
+    assert any(line.startswith("  ") and "agent_message" in line for line in out.splitlines())
+
+
+def test_import_no_endpoint_nonzero(capsys, monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    spool = _spool_with_session(tmp_path)
+    export = tmp_path / "e.json"
+    cli.main(["export", "sess_x", "--dir", str(spool), "--out", str(export)])
+    capsys.readouterr()
+    rc = cli.main(["import", str(export)])
+    assert rc == 1
+    assert "no api_url" in capsys.readouterr().out.lower()

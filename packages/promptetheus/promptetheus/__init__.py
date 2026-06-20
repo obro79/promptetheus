@@ -1,6 +1,7 @@
 """Promptetheus - debugging infrastructure for AI agents."""
 
 from . import trace
+from .agent_runtime import AgentRuntime
 from .fingerprint import FailureFingerprint, failure_fingerprint
 from .sampling import DEFAULT_TAIL_POLICY, TailDecision, TailSamplingPolicy
 from .session import Session, current, observe, tool, traced
@@ -11,6 +12,7 @@ __version__ = "0.0.1"
 
 __all__ = [
     "DEFAULT_TAIL_POLICY",
+    "AgentRuntime",
     "AsyncSession",
     "FailureFingerprint",
     "Session",

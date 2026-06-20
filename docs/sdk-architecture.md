@@ -109,6 +109,41 @@ payloads out of the event stream.
 run feedback, failure signals, and numeric measurements without turning Promptetheus into a generic
 analytics or eval platform.
 
+## Agent Runtime Coordination
+
+`AgentRuntime` is the SDK surface for short-lived, service-backed coordination that can improve an
+agent while it is running. It is not canonical storage and it does not import or talk to Redis
+directly. The SDK calls FastAPI runtime endpoints; the service owns the Redis or in-memory runtime
+backend.
+
+```python
+from promptetheus import AgentRuntime
+
+runtime = AgentRuntime(session.session_id)
+runtime.remember("hypothesis", {"summary": "auth header may be missing"})
+result = runtime.record_tool_call(
+    "pytest",
+    command="pytest tests/server",
+    status="failed",
+    error="401 from trace create",
+)
+if result["seen_recently"]:
+    hint = result.get("hint") or runtime.next_hint()
+```
+
+The first runtime slice supports:
+
+- `remember(kind, value, metadata=None)` for transient working memory.
+- `get_memory(limit=20)` for recent runtime context.
+- `record_tool_call(...)` for repeated-action detection and dedupe hints.
+- `heartbeat(...)` for live phase/current-file/current-hypothesis state.
+- `next_hint()` for service-generated guidance.
+
+Runtime calls are best-effort by contract. If the service is offline, the planned endpoints are not
+available yet, or a response is malformed, the SDK logs at debug level and returns safe fallbacks.
+Runtime payloads are redacted with the built-in redactor before they leave the process because tool
+arguments and stderr often contain secrets.
+
 ## Event Envelope
 
 Every emission carries the base envelope:

@@ -8,7 +8,7 @@ from .session import Session, current, observe, tool, traced
 from .session_async import AsyncSession
 from .trace import start
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
     "DEFAULT_TAIL_POLICY",

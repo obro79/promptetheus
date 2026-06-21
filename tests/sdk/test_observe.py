@@ -41,6 +41,53 @@ def test_observe_records_function_boundary_and_session_end():
     assert tool_result["payload"]["call_id"] == tool_call["payload"]["call_id"]
 
 
+def test_readme_decorator_example_emits_expected_events():
+    transport = RecordingTransport()
+
+    @pt.tool
+    def search_calendar(day: str) -> list[str]:
+        return ["Tuesday 2pm", "Tuesday 3pm"]
+
+    @pt.traced("choose-slot")
+    def choose_slot(slots: list[str]) -> str:
+        return "Wednesday 2pm"
+
+    @pt.observe(
+        agent="calendar-agent",
+        user_goal="Book Tuesday at 2pm",
+        transport=transport,
+    )
+    def run_agent(goal: str) -> str:
+        pt.current().user_message(goal)
+        slots = search_calendar("Tuesday")
+        selected = choose_slot(slots)
+        pt.current().agent_message(f"Booked {selected}")
+        pt.current().goal_check(
+            False,
+            mismatches=["selected Wednesday, not Tuesday"],
+        )
+        return selected
+
+    assert run_agent("Book Tuesday at 2pm") == "Wednesday 2pm"
+
+    event_types = [event["type"] for event in transport.events]
+    assert "tool_call" in event_types
+    assert "tool_result" in event_types
+    assert "agent_message" in event_types
+    assert "goal_check" in event_types
+    assert event_types[-1] == "session_end"
+
+    assert any(
+        event["type"] == "tool_call"
+        and event["payload"]["tool_name"] == "search_calendar"
+        for event in transport.events
+    )
+    assert any(
+        event["type"] == "goal_check" and event["payload"]["passed"] is False
+        for event in transport.events
+    )
+
+
 def test_tool_is_noop_without_session():
     @pt.tool
     def add(a, b):

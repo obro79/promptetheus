@@ -9,6 +9,7 @@ agents that need to fix failing agent runs.
 ## What You Get
 
 - One trace per user-visible agent task.
+- Decorators for top-level agent runs, tool calls, and nested spans.
 - Typed events for user messages, agent messages, tool calls, browser actions,
   DOM snapshots, screenshots, LLM calls, retrieval, metrics, errors, scores,
   and final goal checks.
@@ -16,20 +17,19 @@ agents that need to fix failing agent runs.
   configured or fails, events spool locally and can be replayed later.
 - Local CLI tools for doctor checks, spool inspection, session replay, diffing,
   and failure fingerprints.
-- Optional adapters for common agent frameworks and LLM clients.
 - Hosted MCP config snippets for read-only incident evidence scoped to a
   workspace and Supabase project.
 
-## Onboard In Five Minutes
+## Install
 
-From the repository root:
+For a normal project, install from PyPI:
 
 ```bash
-pip install -e packages/promptetheus
+pip install promptetheus
 promptetheus version
 ```
 
-For hosted delivery, create or configure a project key:
+Create or configure a hosted project key:
 
 ```bash
 export PROMPTETHEUS_CONSOLE_TOKEN=...
@@ -37,6 +37,8 @@ promptetheus init \
   --workspace-name "Acme" \
   --project-name "Browser Agent" \
   --write-env .env
+source .env
+promptetheus doctor
 ```
 
 For local self-hosted development:
@@ -46,22 +48,185 @@ promptetheus init \
   --api-url http://127.0.0.1:4318 \
   --console-token pt_console_token \
   --write-env .env
+source .env
 ```
 
-Load the generated `.env`, or set the variables directly:
+For contributor work from this repository:
 
 ```bash
-export PROMPTETHEUS_API_URL=http://127.0.0.1:4318
-export PROMPTETHEUS_API_KEY=pt_dev_key
+pip install -e packages/promptetheus
+promptetheus version
 ```
 
 With `transport="auto"`, the SDK sends to the configured API when
 `PROMPTETHEUS_API_KEY` is present. Without a key, it writes to the local spool
 so the instrumented agent keeps running.
 
-## First Trace
+## Observe With Decorators
 
-Wrap the top-level agent task with `pt.trace.start(...)`:
+Use decorators when you want instrumentation to sit directly on agent and tool
+functions:
+
+```python
+import promptetheus as pt
+
+@pt.tool
+def search_calendar(day: str) -> list[str]:
+    return ["Tuesday 2pm", "Tuesday 3pm"]
+
+@pt.traced("choose-slot")
+def choose_slot(slots: list[str]) -> str:
+    return "Wednesday 2pm"
+
+@pt.observe(
+    agent="calendar-agent",
+    user_goal="Book Tuesday at 2pm",
+    transport="auto",  # use "spool" to force local JSONL while trying this
+)
+def run_agent(goal: str) -> str:
+    pt.current().user_message(goal)
+    slots = search_calendar("Tuesday")
+    selected = choose_slot(slots)
+    pt.current().agent_message(f"Booked {selected}")
+    pt.current().goal_check(
+        False,
+        mismatches=["selected Wednesday, not Tuesday"],
+    )
+    return selected
+
+run_agent("Book Tuesday at 2pm")
+```
+
+What each decorator does:
+
+- `@pt.observe(...)` starts one trace/session around the top-level run.
+- `@pt.tool` records `tool_call` and `tool_result` events inside the current
+  session.
+- `@pt.traced("name")` adds a nested span to the replay tree without starting a
+  separate session.
+- `pt.current()` returns the active session so the agent can record user
+  messages, agent messages, goal checks, errors, metrics, and other events.
+
+`goal_check(False)` is visible in replay, fingerprints, and tail sampling. If a
+failed goal should also make the process fail, record the goal check and then
+raise an exception so the terminal `session_end` status is `failed`:
+
+```python
+if not selected.startswith("Tuesday"):
+    pt.current().goal_check(False, mismatches=["selected Wednesday"])
+    raise RuntimeError("agent selected the wrong day")
+```
+
+## What You Can See
+
+When no API key is configured, `transport="auto"` writes local JSONL. While
+learning, you can also pass `transport="spool"` to force local output. After a
+local or spooled run, list sessions:
+
+```bash
+promptetheus sessions
+```
+
+Example output:
+
+```text
+  01KVMZ4T7V2SN61ZWG1XTDBK47: 11 event(s)
+```
+
+Replay the timeline:
+
+```bash
+promptetheus replay 01KVMZ4T7V2SN61ZWG1XTDBK47
+```
+
+Example output:
+
+```text
+[0] state_change name='session_started'
+[1] tool_call tool_name='run_agent'
+[2] user_message content='Book Tuesday at 2pm'
+[3] tool_call tool_name='search_calendar'
+[4] tool_result call_id='190a6438979141f5ac11b2e1b2ee29a0'
+[5] state_change name='span_start'
+[6] state_change name='span_end'
+[7] agent_message content='Booked Wednesday 2pm'
+[8] goal_check passed=False
+[9] tool_result call_id='a78566297e0a4a309d5ce44cefe0d836'
+[10] session_end status='completed'
+```
+
+Replay the run tree:
+
+```bash
+promptetheus replay 01KVMZ4T7V2SN61ZWG1XTDBK47 --tree
+```
+
+Example output:
+
+```text
+[0] state_change name='session_started'
+[1] tool_call tool_name='run_agent'
+[2] user_message content='Book Tuesday at 2pm'
+[3] tool_call tool_name='search_calendar'
+[4] tool_result call_id='190a6438979141f5ac11b2e1b2ee29a0'
+[7] agent_message content='Booked Wednesday 2pm'
+[8] goal_check passed=False
+[9] tool_result call_id='a78566297e0a4a309d5ce44cefe0d836'
+[10] session_end status='completed'
+choose-slot span=span_163a8380174647e98bfe1f3fff9e15b9 duration_ms=0.0
+```
+
+Generate a failure fingerprint:
+
+```bash
+promptetheus fingerprint 01KVMZ4T7V2SN61ZWG1XTDBK47
+```
+
+Example output:
+
+```text
+8ae0f41220d0  goal mismatch: selected wednesday, not tuesday
+  - goal:selected wednesday, not tuesday
+```
+
+Inspect the local delivery spool:
+
+```bash
+promptetheus spool list
+```
+
+Example output:
+
+```text
+Spool: .promptetheus/spool
+  pending : 11 event(s) across 1 session file(s), 4082 bytes
+  dead    : 0 event(s) across 0 file(s), 0 bytes
+    01KVMZ4T7V2SN61ZWG1XTDBK47: 11 pending
+```
+
+The raw spool is JSONL. Each line is an event envelope:
+
+```json
+{
+  "type": "tool_call",
+  "session_id": "01KVMZ4T7V2SN61ZWG1XTDBK47",
+  "seq": 1,
+  "idempotency_key": "01KVMZ4T7V2SN61ZWG1XTDBK47:29c5eff0:1",
+  "payload": {
+    "tool_name": "run_agent",
+    "call_id": "a78566297e0a4a309d5ce44cefe0d836",
+    "arguments": {
+      "args": "('Book Tuesday at 2pm',)",
+      "kwargs": "{}"
+    }
+  }
+}
+```
+
+## Manual Trace API
+
+Use `pt.trace.start(...)` when you control the run boundary and want explicit
+event calls instead of decorators:
 
 ```python
 import promptetheus as pt
@@ -77,14 +242,6 @@ with pt.trace.start(
     session.agent_message("Booking confirmed for Wednesday at 2pm")
     session.goal_check(False, mismatches=["booked Wednesday, not Tuesday"])
 # session_end is emitted automatically; transport flush runs on exit
-```
-
-Then inspect the setup:
-
-```bash
-promptetheus doctor
-promptetheus sessions
-promptetheus replay <session-id> --tree
 ```
 
 ## Public SDK API
@@ -105,35 +262,7 @@ pt.AsyncSession
 pt.AgentRuntime
 ```
 
-Use `trace.start` or `start` when you control the top-level run boundary. Use
-decorators when instrumentation should sit directly on functions:
-
-```python
-import promptetheus as pt
-
-@pt.observe(agent="support-agent", user_goal="Answer a billing question")
-def run_agent(question: str) -> str:
-    return answer_question(question)
-
-@pt.tool
-def search_docs(query: str) -> list[str]:
-    return ["refund-policy.md"]
-
-@pt.traced("rank-results")
-def rank(results: list[str]) -> list[str]:
-    return results
-```
-
-`pt.tool` records a `tool_call` and `tool_result` inside the current session.
-`pt.traced` opens a span in the current trace tree without starting a new
-session.
-
-## Session Events
-
-Every helper writes a schema-valid event envelope with `type`, `session_id`,
-`timestamp`, `seq`, `idempotency_key`, and `payload`.
-
-Common helpers:
+Common session helpers:
 
 ```python
 session.user_message("Book Tuesday at 2pm Pacific")
@@ -154,8 +283,10 @@ session.end("failed")
 session.flush(timeout=2)
 ```
 
-Use `metadata` for safe, low-cardinality context. Do not put raw secrets,
-cookies, tokens, or credentials into event payloads.
+Every helper writes a schema-valid event envelope with `type`, `session_id`,
+`timestamp`, `seq`, `idempotency_key`, and `payload`. Use `metadata` for safe,
+low-cardinality context. Do not put raw secrets, cookies, tokens, or
+credentials into event payloads.
 
 ## Async Agents
 
@@ -251,7 +382,7 @@ runtime.heartbeat(phase="investigating", current_file="tests/server/test_mcp.py"
 next_hint = runtime.next_hint()
 ```
 
-## Local CLI Workflows
+## CLI Workflows
 
 In a fresh install, local gateway and MCP commands need their extras:
 

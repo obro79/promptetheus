@@ -76,12 +76,12 @@ def test_spool_purge_dead_letter_flag(tmp_path):
     assert not (dead / "sess_b.jsonl").exists()
 
 
-def test_doctor_no_endpoint_returns_nonzero(capsys, monkeypatch, tmp_path):
+def test_doctor_no_api_key_returns_nonzero(capsys, monkeypatch, tmp_path):
     _isolate_config(monkeypatch, tmp_path)
     rc = cli.main(["doctor"])
     out = capsys.readouterr().out
     assert rc == 1
-    assert "no api_url" in out.lower()
+    assert "no api_key" in out.lower()
 
 
 def test_doctor_never_leaks_api_key(capsys, monkeypatch, tmp_path):
@@ -208,7 +208,7 @@ def test_replay_prints_timeline_with_span_indent(capsys, tmp_path):
     assert any(line.startswith("  ") and "agent_message" in line for line in out.splitlines())
 
 
-def test_import_no_endpoint_nonzero(capsys, monkeypatch, tmp_path):
+def test_import_no_api_key_nonzero(capsys, monkeypatch, tmp_path):
     _isolate_config(monkeypatch, tmp_path)
     spool = _spool_with_session(tmp_path)
     export = tmp_path / "e.json"
@@ -216,4 +216,4 @@ def test_import_no_endpoint_nonzero(capsys, monkeypatch, tmp_path):
     capsys.readouterr()
     rc = cli.main(["import", str(export)])
     assert rc == 1
-    assert "no api_url" in capsys.readouterr().out.lower()
+    assert "no api_key" in capsys.readouterr().out.lower()

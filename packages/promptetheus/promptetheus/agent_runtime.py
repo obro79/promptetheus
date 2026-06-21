@@ -88,8 +88,8 @@ class AgentRuntime:
         enabled: bool = True,
     ) -> None:
         self.session_id = str(session_id)
-        self.endpoint = _resolve_endpoint(endpoint) if enabled else None
         self.api_key = _resolve_api_key(api_key)
+        self.endpoint = _resolve_endpoint(endpoint) if enabled and self.api_key else None
         self.timeout = float(timeout)
         self._redactor = build_default_redactor()
 
@@ -161,6 +161,48 @@ class AgentRuntime:
             result.setdefault("hint", None)
             return result
         return {"seen_recently": False, "hint": None}
+
+    def before_tool_call(
+        self,
+        tool_name: str,
+        *,
+        command: str | None = None,
+        args: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ask the runtime for guidance before running a tool/action."""
+
+        return self.record_tool_call(
+            tool_name,
+            command=command,
+            args=args,
+            status="planned",
+            metadata=metadata,
+        )
+
+    def after_tool_call(
+        self,
+        tool_name: str,
+        *,
+        command: str | None = None,
+        args: Mapping[str, Any] | None = None,
+        status: str | None = None,
+        error: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Report a completed tool/action outcome to the runtime."""
+
+        resolved_status = status
+        if resolved_status is None:
+            resolved_status = "failed" if error is not None else "succeeded"
+        return self.record_tool_call(
+            tool_name,
+            command=command,
+            args=args,
+            status=resolved_status,
+            error=error,
+            metadata=metadata,
+        )
 
     def heartbeat(
         self,

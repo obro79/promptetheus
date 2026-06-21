@@ -8,7 +8,7 @@ Resolves SDK defaults from, in descending priority:
    PROMPTETHEUS_SAMPLE_RATE, PROMPTETHEUS_REDACT).
 3. A TOML file at ~/.promptetheus/config.toml (parsed with the stdlib
    tomllib).
-4. Built-in defaults.
+4. Built-in defaults, including the hosted Promptetheus API URL.
 
 This module only *resolves and threads* configuration. It deliberately does not
 implement sampling or redaction behavior — those live in session.py. Reading
@@ -27,6 +27,9 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("promptetheus")
+
+# Hosted Promptetheus API used when users provide only PROMPTETHEUS_API_KEY.
+DEFAULT_API_URL = "https://api-production-8a8a.up.railway.app"
 
 # Default on-disk location of the optional user config file.
 DEFAULT_CONFIG_PATH = Path.home() / ".promptetheus" / "config.toml"
@@ -62,11 +65,11 @@ _DEFAULT_SAMPLE_RATE = 1.0
 class Config:
     """Resolved SDK configuration.
 
-    All connection fields default to None so callers and trace.start can
-    distinguish "unset" (fall through to the next layer) from an explicit value.
+    api_url defaults to the hosted Promptetheus API. api_key remains None until
+    explicitly configured so installs cannot write without a project-scoped key.
     """
 
-    api_url: str | None = None
+    api_url: str | None = DEFAULT_API_URL
     api_key: str | None = None
     project_id: str | None = None
     environment: str | None = None
@@ -148,8 +151,8 @@ def load_config(
 
     Precedence (highest first): explicit kwargs > environment variables > TOML
     file (~/.promptetheus/config.toml by default) > built-in defaults. Any
-    field left unresolved keeps its dataclass default (None for connection
-    fields, 1.0 for sample_rate). Never raises.
+    field left unresolved keeps its dataclass default (hosted API URL for
+    api_url, None for credentials, 1.0 for sample_rate). Never raises.
     """
 
     path = Path(config_path) if config_path is not None else DEFAULT_CONFIG_PATH
@@ -170,15 +173,17 @@ def load_config(
         "redact": redact,
     }
 
+    defaults = Config()
+
     def _resolve(field_name: str) -> Any:
-        # explicit kwargs > env vars > TOML > (handled by caller default).
+        # explicit kwargs > env vars > TOML > dataclass default.
         if explicit.get(field_name) is not None:
             return explicit[field_name]
         if field_name in env_values:
             return env_values[field_name]
         if field_name in toml_values:
             return toml_values[field_name]
-        return None
+        return getattr(defaults, field_name)
 
     sample_rate_value = _coerce_sample_rate(_resolve("sample_rate"))
 
@@ -253,6 +258,7 @@ class override_config:
 
 __all__ = [
     "Config",
+    "DEFAULT_API_URL",
     "DEFAULT_CONFIG_PATH",
     "get_config",
     "load_config",

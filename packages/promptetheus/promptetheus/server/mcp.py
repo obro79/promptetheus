@@ -44,8 +44,9 @@ def resolve_mcp_config(config: Config | None = None) -> MCPConfig:
         joined = " and ".join(missing)
         raise RuntimeError(
             f"promptetheus mcp requires {joined}. Set the hosted Promptetheus "
-            "API URL and API key explicitly via environment variables or "
-            "~/.promptetheus/config.toml. Do not provide Supabase service-role keys."
+            "API key via environment variables or ~/.promptetheus/config.toml. "
+            "Use PROMPTETHEUS_API_URL only to override the hosted default. "
+            "Do not provide Supabase service-role keys."
         )
     return MCPConfig(api_url=api_url.rstrip("/"), api_key=api_key)
 

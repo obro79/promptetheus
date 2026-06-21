@@ -18,15 +18,24 @@ with pt.trace.start(agent="demo-agent", user_goal="Book a meeting for Tuesday") 
 # session_end is emitted automatically; transport flush runs on exit
 ```
 
-Point at a local FastAPI spine:
+Send to hosted Promptetheus by setting your project API key:
+
+```bash
+export PROMPTETHEUS_API_KEY=pt_live_...
+python your_agent.py
+```
+
+With `transport="auto"`, the SDK sends to the hosted Promptetheus API when
+`PROMPTETHEUS_API_KEY` is set. Without a key, events are written to the local
+spool so instrumented agents keep running.
+
+For self-hosted or local FastAPI, override the endpoint:
 
 ```bash
 export PROMPTETHEUS_API_URL=http://127.0.0.1:4318
 export PROMPTETHEUS_API_KEY=pt_dev_key
 python your_agent.py
 ```
-
-With `transport="auto"`, the SDK probes `http://127.0.0.1:4318/health` before falling back to a local spool.
 
 ## MCP install snippets
 

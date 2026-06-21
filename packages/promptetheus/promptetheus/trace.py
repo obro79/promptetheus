@@ -26,7 +26,7 @@ def _localhost_health_ok(base_url: str = _LOCALHOST_PROBE) -> bool:
 
 
 def _resolved_endpoint(endpoint: str | None) -> str | None:
-    """Endpoint precedence: explicit arg > env var > config file > None."""
+    """Endpoint precedence: explicit arg > env var > config file > hosted default."""
 
     return endpoint or os.environ.get("PROMPTETHEUS_API_URL") or get_config().api_url
 
@@ -46,33 +46,40 @@ def resolve_transport(
 ) -> Any:
     """Resolve user transport config into a transport object.
 
-    Dependency-free defaults keep early adoption simple: use HTTP when an
-    endpoint is configured, otherwise write a local spool that can be replayed
-    through FastAPI later. When neither an explicit endpoint/api_key nor
-    the PROMPTETHEUS_API_URL/PROMPTETHEUS_API_KEY env vars are set, the
-    values fall back to ~/.promptetheus/config.toml (see .config).
+    Dependency-free defaults keep early adoption simple: use hosted HTTP when
+    an API key is configured, otherwise write a local spool that can be replayed
+    through FastAPI later. Endpoint values fall back to
+    ~/.promptetheus/config.toml and then the hosted Promptetheus API URL.
     """
 
     if transport is None or transport == "auto":
+        resolved_api_key = _resolved_api_key(api_key)
+        if not resolved_api_key:
+            return LocalSpoolTransport(spool_dir)
         resolved_endpoint = _resolved_endpoint(endpoint)
         if not resolved_endpoint and _localhost_health_ok():
             resolved_endpoint = _LOCALHOST_PROBE
         if resolved_endpoint:
             return DurableHTTPTransport(
                 resolved_endpoint,
-                api_key=_resolved_api_key(api_key),
+                api_key=resolved_api_key,
                 spool_dir=spool_dir,
             )
         return LocalSpoolTransport(spool_dir)
     if transport == "http":
         resolved_endpoint = _resolved_endpoint(endpoint)
+        resolved_api_key = _resolved_api_key(api_key)
         if not resolved_endpoint:
             raise ValueError(
                 "transport='http' requires endpoint or PROMPTETHEUS_API_URL"
             )
+        if not resolved_api_key:
+            raise ValueError(
+                "transport='http' requires api_key or PROMPTETHEUS_API_KEY"
+            )
         return DurableHTTPTransport(
             resolved_endpoint,
-            api_key=_resolved_api_key(api_key),
+            api_key=resolved_api_key,
             spool_dir=spool_dir,
         )
     if transport == "spool":
@@ -106,9 +113,9 @@ def start(
 ) -> Session:
     """Start a Promptetheus session.
 
-    transport="auto" sends to endpoint/PROMPTETHEUS_API_URL when present
-    and otherwise spools events locally. sample_rate and redact fall back
-    to config (env / ~/.promptetheus/config.toml); redact="default"
+    transport="auto" sends to the hosted/default endpoint when a project API
+    key is present and otherwise spools events locally. sample_rate and redact
+    fall back to config (env / ~/.promptetheus/config.toml); redact="default"
     enables the built-in secret/PII redactor.
     """
 

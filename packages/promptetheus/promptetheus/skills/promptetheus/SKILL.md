@@ -50,11 +50,17 @@ Use this skill to add Promptetheus observability to an AI-agent codebase. Prompt
    - `session.error(exc, handled=True)` when an exception or recoverable failure matters.
    - `session.end("success")`, `session.end("failed")`, or let the context manager end the session automatically.
 
-5. Configure delivery through environment variables when HTTP delivery is expected.
+5. Configure delivery with the project API key when hosted HTTP delivery is expected.
+
+   ```bash
+   export PROMPTETHEUS_API_KEY=pt_live_...
+   ```
+
+   The SDK defaults to the hosted Promptetheus API. For self-hosted or local
+   FastAPI, also set:
 
    ```bash
    export PROMPTETHEUS_API_URL=http://127.0.0.1:4318
-   export PROMPTETHEUS_API_KEY=pt_dev_key
    ```
 
    Use `transport="auto"` by default. Use `transport="http"` only when an endpoint/API key are explicitly known and failing fast is desirable.

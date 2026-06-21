@@ -1,5 +1,8 @@
+import pytest
+
 import promptetheus as pt
 from promptetheus import config as config_module
+from promptetheus.config import DEFAULT_API_URL
 from promptetheus.trace import resolve_transport
 from promptetheus.transport import DurableHTTPTransport, InMemoryTransport, LocalSpoolTransport
 
@@ -57,12 +60,29 @@ def test_trace_start_context_manager_records_goal_check():
 
 def test_resolve_transport_defaults_to_local_spool(tmp_path, monkeypatch):
     monkeypatch.delenv("PROMPTETHEUS_API_URL", raising=False)
+    monkeypatch.delenv("PROMPTETHEUS_API_KEY", raising=False)
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
 
     transport = resolve_transport(spool_dir=str(tmp_path))
 
     assert isinstance(transport, LocalSpoolTransport)
     assert transport.spool_dir == tmp_path
+    config_module.reset_config()
+
+
+def test_resolve_transport_uses_hosted_default_when_api_key_present(tmp_path, monkeypatch):
+    monkeypatch.delenv("PROMPTETHEUS_API_URL", raising=False)
+    monkeypatch.setenv("PROMPTETHEUS_API_KEY", "pt_live_test")
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
+
+    transport = resolve_transport(spool_dir=str(tmp_path))
+
+    assert isinstance(transport, DurableHTTPTransport)
+    assert transport.endpoint == f"{DEFAULT_API_URL}/"
+    assert transport.api_key == "pt_live_test"
+    config_module.reset_config()
 
 
 def test_resolve_transport_uses_http_when_endpoint_present():
@@ -71,6 +91,11 @@ def test_resolve_transport_uses_http_when_endpoint_present():
     assert isinstance(transport, DurableHTTPTransport)
     assert transport.endpoint == "http://localhost:4318/"
     assert transport.api_key == "pt_key"
+
+
+def test_resolve_transport_http_requires_api_key():
+    with pytest.raises(ValueError, match="api_key"):
+        resolve_transport("http", endpoint="http://localhost:4318")
 
 
 def test_resolve_transport_memory_shortcut():

@@ -189,11 +189,16 @@ Emission must never slow down or break the agent being observed:
 
 The event API does not change when transports change.
 
-`transport="auto"` resolves the endpoint with this precedence:
+`transport="auto"` uses HTTP only when a project API key is configured. Endpoint
+resolution then follows this precedence:
 
 1. Explicit `endpoint=` argument.
-2. `PROMPTETHEUS_API_URL` environment variable (with `PROMPTETHEUS_API_KEY`).
-3. Probe `http://localhost:4318` (local `promptetheus dev`).
+2. `PROMPTETHEUS_API_URL` environment variable.
+3. `~/.promptetheus/config.toml`.
+4. Hosted Promptetheus API default.
+
+When no API key is configured, auto mode writes to the local spool instead of
+making unauthenticated hosted requests.
 
 ### Local dev
 
@@ -203,6 +208,7 @@ session = trace.start(
     user_goal=user_goal,
     transport="auto",
     endpoint="http://localhost:4318",
+    api_key=os.environ["PROMPTETHEUS_API_KEY"],
 )
 ```
 
@@ -212,8 +218,7 @@ session = trace.start(
 session = trace.start(
     agent="browser-agent",
     user_goal=user_goal,
-    transport="http",
-    endpoint=os.environ["PROMPTETHEUS_API_URL"],
+    transport="auto",
     api_key=os.environ["PROMPTETHEUS_API_KEY"],
     project_id="proj_acmemeet",
 )

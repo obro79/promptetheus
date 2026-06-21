@@ -9,13 +9,14 @@ from promptetheus.config import Config
 from promptetheus.server.mcp import PromptetheusAPIClient, resolve_mcp_config
 
 
-def test_resolve_mcp_config_requires_hosted_api_url_and_key() -> None:
+def test_resolve_mcp_config_requires_api_key() -> None:
     with pytest.raises(RuntimeError) as excinfo:
         resolve_mcp_config(Config())
 
     message = str(excinfo.value)
-    assert "PROMPTETHEUS_API_URL" in message
     assert "PROMPTETHEUS_API_KEY" in message
+    assert "PROMPTETHEUS_API_URL" in message
+    assert "override the hosted default" in message
     assert "Supabase service-role keys" in message
 
 

@@ -335,7 +335,10 @@ def _cmd_doctor() -> int:
     )
 
     healthy = True
-    if not config.api_url:
+    if not config.api_key:
+        print("Connectivity   : no api_key configured (set PROMPTETHEUS_API_KEY).")
+        healthy = False
+    elif not config.api_url:
         print(
             "Connectivity   : no api_url configured (set PROMPTETHEUS_API_URL or config.toml)."
         )
@@ -384,6 +387,9 @@ def _spool_replay(spool_dir: Path) -> int:
     from .config import load_config
 
     config = load_config()
+    if not config.api_key:
+        print("Cannot replay: no api_key configured (set PROMPTETHEUS_API_KEY).")
+        return 1
     if not config.api_url:
         print(
             "Cannot replay: no api_url configured (set PROMPTETHEUS_API_URL or config.toml)."
@@ -573,6 +579,9 @@ def _cmd_import(file: Path) -> int:
         return 0
 
     config = load_config()
+    if not config.api_key:
+        print("Cannot import: no api_key configured (set PROMPTETHEUS_API_KEY).")
+        return 1
     if not config.api_url:
         print(
             "Cannot import: no api_url configured (set PROMPTETHEUS_API_URL or config.toml)."

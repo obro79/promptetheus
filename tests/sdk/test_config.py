@@ -8,6 +8,7 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from promptetheus.config import (  # noqa: E402
     Config,
+    DEFAULT_API_URL,
     load_config,
     override_config,
     reset_config,
@@ -33,7 +34,7 @@ def test_defaults_when_nothing_set(monkeypatch, tmp_path):
     config = load_config(config_path=tmp_path / "missing.toml")
     assert config == Config()
     assert config.sample_rate == 1.0
-    assert config.api_url is None
+    assert config.api_url == DEFAULT_API_URL
 
 
 def test_toml_layer(monkeypatch, tmp_path):
@@ -68,7 +69,7 @@ def test_malformed_toml_is_tolerated(monkeypatch, tmp_path):
         monkeypatch.delenv(var, raising=False)
     path = _write_toml(tmp_path, "this is = not valid = toml [[[")
     config = load_config(config_path=path)  # must not raise
-    assert config.api_url is None
+    assert config.api_url == DEFAULT_API_URL
     assert config.sample_rate == 1.0
 
 

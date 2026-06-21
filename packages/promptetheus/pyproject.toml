@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "promptetheus"
-version = "0.0.1"
+version = "0.1.0"
 description = "Debugging infrastructure for AI agents — traces, replay, failure detection, and fix handoff."
 readme = "README.md"
 license = "MIT"

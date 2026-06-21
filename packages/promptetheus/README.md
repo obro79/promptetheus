@@ -50,4 +50,4 @@ defaults to read-only Supabase evidence scoped to the supplied project ref.
 
 See the [project docs](https://github.com/obro79/promptetheus) for architecture and demo plans.
 
-**Status:** Pre-alpha (`0.0.1` reserves the PyPI name; SDK + State-0 spine in progress.)
+**Status:** Stable `1.0.0` SDK for hosted/self-hosted Promptetheus trace delivery.

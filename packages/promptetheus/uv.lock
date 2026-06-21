@@ -3748,7 +3748,7 @@ wheels = [
 
 [[package]]
 name = "promptetheus"
-version = "2.0.0"
+version = "2.0.1"
 source = { editable = "." }
 
 [package.optional-dependencies]

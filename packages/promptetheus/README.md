@@ -65,4 +65,4 @@ defaults to read-only Supabase evidence scoped to the supplied project ref.
 
 See the [project docs](https://github.com/obro79/promptetheus) for architecture and demo plans.
 
-**Status:** Stable `2.0.0` SDK for hosted/self-hosted Promptetheus trace delivery.
+**Status:** Stable `2.0.1` SDK for hosted/self-hosted Promptetheus trace delivery.

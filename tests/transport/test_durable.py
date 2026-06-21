@@ -21,6 +21,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
+from promptetheus import config as config_module
 from promptetheus.transport import DurableHTTPTransport
 
 
@@ -208,6 +209,23 @@ def test_exposes_endpoint_and_api_key(fake, tmp_path):
         transport.close()
 
 
+def test_uses_env_timeout_by_default(fake, tmp_path, monkeypatch):
+    monkeypatch.setenv("PROMPTETHEUS_HTTP_TIMEOUT", "24")
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
+    transport = DurableHTTPTransport(
+        "http://example.test",
+        api_key="pt_key",
+        spool_dir=str(tmp_path / "spool"),
+    )
+    try:
+        assert transport.timeout == 24.0
+        assert transport._poster.timeout == 24.0
+    finally:
+        transport.close()
+        config_module.reset_config()
+
+
 # -- happy path: non-blocking enqueue + background flush --------------------
 
 
@@ -235,6 +253,20 @@ def test_enqueue_is_nonblocking_and_background_flush_delivers_grouped(fake, tmp_
             by_session.setdefault(sid, []).extend(e["seq"] for e in payload["events"])
         assert by_session["sess_a"] == [1, 2]
         assert by_session["sess_b"] == [1]
+    finally:
+        transport.close()
+
+
+def test_spool_replay_cooldown_after_transient_failure(fake, tmp_path):
+    fake.set_default(FakePoster._urlerror_action())
+    transport = make_transport(fake, tmp_path)
+    try:
+        transport._spool("sess_123", [event("sess_123", 1)])
+
+        transport._replay_spool(None)
+        transport._replay_spool(None)
+
+        assert len(fake.event_calls) == 1
     finally:
         transport.close()
 

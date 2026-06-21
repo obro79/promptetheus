@@ -5,7 +5,8 @@ Resolves SDK defaults from, in descending priority:
 1. Explicit keyword arguments passed to load_config.
 2. Environment variables (PROMPTETHEUS_API_URL, PROMPTETHEUS_API_KEY,
    PROMPTETHEUS_PROJECT, PROMPTETHEUS_ENVIRONMENT,
-   PROMPTETHEUS_SAMPLE_RATE, PROMPTETHEUS_REDACT).
+   PROMPTETHEUS_SAMPLE_RATE, PROMPTETHEUS_REDACT,
+   PROMPTETHEUS_HTTP_TIMEOUT).
 3. A TOML file at ~/.promptetheus/config.toml (parsed with the stdlib
    tomllib).
 4. Built-in defaults, including the hosted Promptetheus API URL.
@@ -30,6 +31,7 @@ logger = logging.getLogger("promptetheus")
 
 # Hosted Promptetheus API used when users provide only PROMPTETHEUS_API_KEY.
 DEFAULT_API_URL = "https://api-production-8a8a.up.railway.app"
+DEFAULT_HTTP_TIMEOUT = 30.0
 
 # Default on-disk location of the optional user config file.
 DEFAULT_CONFIG_PATH = Path.home() / ".promptetheus" / "config.toml"
@@ -43,6 +45,7 @@ _ENV_TO_FIELD: dict[str, str] = {
     "PROMPTETHEUS_ENVIRONMENT": "environment",
     "PROMPTETHEUS_SAMPLE_RATE": "sample_rate",
     "PROMPTETHEUS_REDACT": "redact",
+    "PROMPTETHEUS_HTTP_TIMEOUT": "http_timeout",
 }
 
 # TOML key -> Config field name. The TOML file uses the same short names as the
@@ -55,6 +58,7 @@ _TOML_KEYS: tuple[str, ...] = (
     "environment",
     "sample_rate",
     "redact",
+    "http_timeout",
 )
 
 # Built-in defaults for fields that are not None by default.
@@ -75,6 +79,7 @@ class Config:
     environment: str | None = None
     sample_rate: float = _DEFAULT_SAMPLE_RATE
     redact: str | None = None
+    http_timeout: float = DEFAULT_HTTP_TIMEOUT
 
 
 def _coerce_sample_rate(value: Any) -> float | None:
@@ -94,6 +99,28 @@ def _coerce_sample_rate(value: Any) -> float | None:
     if rate > 1.0:
         return 1.0
     return rate
+
+
+def _coerce_positive_float(value: Any, *, field_name: str) -> float | None:
+    """Coerce a numeric config value to a positive float, or None if unusable."""
+
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Promptetheus ignoring invalid %s %r; using default", field_name, value
+        )
+        return None
+    if parsed <= 0.0:
+        logger.warning(
+            "Promptetheus ignoring non-positive %s %r; using default",
+            field_name,
+            value,
+        )
+        return None
+    return parsed
 
 
 def _coerce_str(value: Any) -> str | None:
@@ -145,6 +172,7 @@ def load_config(
     environment: str | None = None,
     sample_rate: float | None = None,
     redact: str | None = None,
+    http_timeout: float | None = None,
     config_path: str | Path | None = None,
 ) -> Config:
     """Merge explicit kwargs, env vars, the TOML file, and defaults into a Config.
@@ -171,6 +199,7 @@ def load_config(
         "environment": environment,
         "sample_rate": sample_rate,
         "redact": redact,
+        "http_timeout": http_timeout,
     }
 
     defaults = Config()
@@ -186,6 +215,9 @@ def load_config(
         return getattr(defaults, field_name)
 
     sample_rate_value = _coerce_sample_rate(_resolve("sample_rate"))
+    http_timeout_value = _coerce_positive_float(
+        _resolve("http_timeout"), field_name="http_timeout"
+    )
 
     return Config(
         api_url=_coerce_str(_resolve("api_url")),
@@ -196,6 +228,9 @@ def load_config(
         if sample_rate_value is not None
         else _DEFAULT_SAMPLE_RATE,
         redact=_coerce_str(_resolve("redact")),
+        http_timeout=http_timeout_value
+        if http_timeout_value is not None
+        else DEFAULT_HTTP_TIMEOUT,
     )
 
 
@@ -259,6 +294,7 @@ class override_config:
 __all__ = [
     "Config",
     "DEFAULT_API_URL",
+    "DEFAULT_HTTP_TIMEOUT",
     "DEFAULT_CONFIG_PATH",
     "get_config",
     "load_config",

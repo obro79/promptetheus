@@ -66,6 +66,7 @@ _DEFAULT_COMPRESS_MIN_BYTES = 1024
 # server. _BACKOFF_BASE and _BACKOFF_CAP keep the schedule explicit and testable.
 _BACKOFF_BASE = 0.5
 _BACKOFF_CAP = 30.0
+_SPOOL_REPLAY_FAILURE_COOLDOWN = 30.0
 
 # HTTP status codes that are permanent client errors: never retry, dead-letter
 # the whole request immediately.
@@ -203,7 +204,7 @@ class DurableHTTPTransport(BaseTransport):
         batch_size: int = 50,
         flush_interval: float = 1.0,
         max_retries: int = 5,
-        timeout: float = 5.0,
+        timeout: float | None = None,
         queue_maxsize: int = 10_000,
         max_spool_bytes: int = 256 * 1024 * 1024,
         compress_min_bytes: int = _DEFAULT_COMPRESS_MIN_BYTES,
@@ -226,7 +227,7 @@ class DurableHTTPTransport(BaseTransport):
         self.batch_size = max(1, int(batch_size))
         self.flush_interval = float(flush_interval)
         self.max_retries = max(0, int(max_retries))
-        self.timeout = float(timeout)
+        self.timeout = self._poster.timeout
         # Bounded in-memory queue: on overflow we spill to the spool rather than
         # blocking the caller or growing process memory without bound.
         self.queue_maxsize = max(1, int(queue_maxsize))
@@ -250,6 +251,7 @@ class DurableHTTPTransport(BaseTransport):
         self._overflow_logged = False
         self._replayed_spool = False
         self._atexit_registered = False
+        self._last_spool_replay_failure_at: float | None = None
 
         # Circuit breaker: stop hammering a down/rate-limiting server.
         self._breaker = _CircuitBreaker(
@@ -988,6 +990,8 @@ class DurableHTTPTransport(BaseTransport):
         """
 
         deadline = None if timeout is None else time.monotonic() + timeout
+        if timeout is None and self._spool_replay_in_cooldown():
+            return
         try:
             if not self.spool_dir.exists():
                 self._replayed_spool = True
@@ -1041,6 +1045,7 @@ class DurableHTTPTransport(BaseTransport):
             )
         except URLError:
             # Still offline; leave the spool file for the next attempt.
+            self._mark_spool_replay_failure()
             return
         except Exception as exc:
             status = _parse_http_status(exc)
@@ -1058,9 +1063,11 @@ class DurableHTTPTransport(BaseTransport):
                     session_id,
                     status,
                 )
+                self._mark_spool_replay_failure()
             return
 
         outcome = self._resolve_accept_reject(session_id, events, response)
+        self._last_spool_replay_failure_at = None
         if outcome.rejected:
             self._write_dead_letter(session_id, outcome.rejected)
         if outcome.fully_accounted:
@@ -1079,6 +1086,22 @@ class DurableHTTPTransport(BaseTransport):
             self._rewrite_spool_file(claimed_path, outcome.retryable)
         else:
             self._safe_unlink(claimed_path)
+
+    def _spool_replay_in_cooldown(self) -> bool:
+        if self._last_spool_replay_failure_at is None:
+            return False
+        return (
+            time.monotonic() - self._last_spool_replay_failure_at
+            < _SPOOL_REPLAY_FAILURE_COOLDOWN
+        )
+
+    def _mark_spool_replay_failure(self) -> None:
+        if self._last_spool_replay_failure_at is None:
+            logger.warning(
+                "Promptetheus pausing spool replay for %.0fs after transient failure",
+                _SPOOL_REPLAY_FAILURE_COOLDOWN,
+            )
+        self._last_spool_replay_failure_at = time.monotonic()
 
     @staticmethod
     def _rewrite_spool_file(path: Path, events: list[dict[str, Any]]) -> None:

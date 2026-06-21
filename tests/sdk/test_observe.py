@@ -2,7 +2,7 @@ import pytest
 
 import promptetheus as pt
 from promptetheus import config as config_module
-from promptetheus.config import DEFAULT_API_URL
+from promptetheus.config import DEFAULT_API_URL, DEFAULT_HTTP_TIMEOUT
 from promptetheus.trace import resolve_transport
 from promptetheus.transport import DurableHTTPTransport, InMemoryTransport, LocalSpoolTransport
 
@@ -73,6 +73,7 @@ def test_resolve_transport_defaults_to_local_spool(tmp_path, monkeypatch):
 
 def test_resolve_transport_uses_hosted_default_when_api_key_present(tmp_path, monkeypatch):
     monkeypatch.delenv("PROMPTETHEUS_API_URL", raising=False)
+    monkeypatch.delenv("PROMPTETHEUS_HTTP_TIMEOUT", raising=False)
     monkeypatch.setenv("PROMPTETHEUS_API_KEY", "pt_live_test")
     monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
     config_module.reset_config()
@@ -82,6 +83,21 @@ def test_resolve_transport_uses_hosted_default_when_api_key_present(tmp_path, mo
     assert isinstance(transport, DurableHTTPTransport)
     assert transport.endpoint == f"{DEFAULT_API_URL}/"
     assert transport.api_key == "pt_live_test"
+    assert transport.timeout == DEFAULT_HTTP_TIMEOUT
+    config_module.reset_config()
+
+
+def test_resolve_transport_uses_env_http_timeout(tmp_path, monkeypatch):
+    monkeypatch.delenv("PROMPTETHEUS_API_URL", raising=False)
+    monkeypatch.setenv("PROMPTETHEUS_API_KEY", "pt_live_test")
+    monkeypatch.setenv("PROMPTETHEUS_HTTP_TIMEOUT", "42")
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
+
+    transport = resolve_transport(spool_dir=str(tmp_path))
+
+    assert isinstance(transport, DurableHTTPTransport)
+    assert transport.timeout == 42.0
     config_module.reset_config()
 
 

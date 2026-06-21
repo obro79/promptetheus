@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from promptetheus import config as config_module
 from promptetheus.transport import BaseTransport, InMemoryTransport, LocalSpoolTransport
 from promptetheus.transport.http import HTTPTransport
 
@@ -107,6 +108,28 @@ def test_http_transport_requires_endpoint():
     transport = HTTPTransport("http://example.test/api")
 
     assert transport.endpoint == "http://example.test/api/"
+
+
+def test_http_transport_uses_env_timeout_by_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROMPTETHEUS_HTTP_TIMEOUT", "22")
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
+
+    transport = HTTPTransport("http://example.test/api")
+
+    assert transport.timeout == 22.0
+    config_module.reset_config()
+
+
+def test_http_transport_explicit_timeout_overrides_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("PROMPTETHEUS_HTTP_TIMEOUT", "22")
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", tmp_path / "no-config.toml")
+    config_module.reset_config()
+
+    transport = HTTPTransport("http://example.test/api", timeout=1.5)
+
+    assert transport.timeout == 1.5
+    config_module.reset_config()
 
 
 def test_http_transport_groups_batches_by_session(monkeypatch):

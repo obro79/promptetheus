@@ -9,18 +9,20 @@ from urllib.error import HTTPError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
+from promptetheus.config import get_config
+
 from . import BaseTransport, Event
 
 class HTTPTransport(BaseTransport):
     """Send already-enveloped events to a Promptetheus FastAPI endpoint."""
 
     def __init__(
-        self, endpoint: str, api_key: str | None = None, timeout: float = 5.0
+        self, endpoint: str, api_key: str | None = None, timeout: float | None = None
     ) -> None:
         super().__init__()
         self.endpoint = endpoint.rstrip("/") + "/"
         self.api_key = api_key
-        self.timeout = timeout
+        self.timeout = float(timeout if timeout is not None else get_config().http_timeout)
 
     def create_trace(self, metadata: Mapping[str, Any]) -> None:
         self._post("/api/traces", dict(metadata))

@@ -440,15 +440,8 @@ uv run --project packages/promptetheus --extra dev --extra server --extra mcp py
 uv run --project packages/promptetheus --extra dev mypy
 ```
 
-Docs to read next:
-
-- [SDK architecture](../../docs/sdk-architecture.md)
-- [MCP design](../../docs/mcp.md)
-- [Demo plan](../../docs/demo-plan.md)
-- [Reference examples](../../docs/reference/reference-examples.md)
-- [Technical architecture](../../docs/architecture/technical-architecture.md)
-
-## Security And Privacy
+The generated config uses a stdio bridge to the hosted Promptetheus MCP URL and
+defaults to read-only Promptetheus evidence scoped to the supplied project ref.
 
 - Promptetheus project keys identify Promptetheus projects. They are not
   Supabase service-role keys.

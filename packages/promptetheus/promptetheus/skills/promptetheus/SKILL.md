@@ -50,20 +50,25 @@ Use this skill to add Promptetheus observability to an AI-agent codebase. Prompt
    - `session.error(exc, handled=True)` when an exception or recoverable failure matters.
    - `session.end("success")`, `session.end("failed")`, or let the context manager end the session automatically.
 
-5. Configure delivery with the project API key when hosted HTTP delivery is expected.
+5. Configure delivery.
+
+   Hosted Promptetheus is the default. For hosted ingestion, users only need
+   their project API key:
 
    ```bash
    export PROMPTETHEUS_API_KEY=pt_live_...
+   python your_agent.py
    ```
 
-   The SDK defaults to the hosted Promptetheus API. For self-hosted or local
-   FastAPI, also set:
+   For self-hosted or local FastAPI, add an endpoint override:
 
    ```bash
    export PROMPTETHEUS_API_URL=http://127.0.0.1:4318
+   export PROMPTETHEUS_API_KEY=pt_dev_key
+   python your_agent.py
    ```
 
-   Use `transport="auto"` by default. Use `transport="http"` only when an endpoint/API key are explicitly known and failing fast is desirable.
+   Use `transport="auto"` by default. Use `transport="http"` only when an endpoint/API key are explicitly known and failing fast is desirable. Do not ask users for Supabase/Postgres connection strings in agent apps; SDK events should go to Promptetheus FastAPI ingestion, which writes to storage.
 
 6. Validate the setup.
    - Run the repo's narrow tests for the instrumented path.

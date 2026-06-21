@@ -61,7 +61,7 @@ promptetheus mcp install --client codex --workspace acme --project-ref abcdefghi
 ```
 
 The generated config uses a stdio bridge to the hosted Promptetheus MCP URL and
-defaults to read-only Supabase evidence scoped to the supplied project ref.
+defaults to read-only Promptetheus evidence scoped to the supplied project ref.
 
 See the [project docs](https://github.com/obro79/promptetheus) for architecture and demo plans.
 

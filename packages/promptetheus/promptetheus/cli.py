@@ -26,7 +26,7 @@ DEV_HOST = "0.0.0.0"
 DEV_PORT = 4318
 
 DEFAULT_SPOOL_DIR = ".promptetheus/spool"
-DEFAULT_MCP_BASE_URL = "https://mcp.promptetheus.dev/supabase"
+DEFAULT_MCP_BASE_URL = "https://mcp.promptetheus.dev/promptetheus"
 _DEAD_LETTER_DIR = "dead-letter"
 
 
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     mcp_sub = mcp_p.add_subparsers(dest="mcp_command")
     mcp_install_p = mcp_sub.add_parser(
         "install",
-        help="Print hosted Promptetheus MCP client config for a Supabase project",
+        help="Print hosted Promptetheus MCP client config for a Promptetheus project",
     )
     mcp_install_p.add_argument(
         "--client",
@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     mcp_install_p.add_argument(
         "--project-ref",
         required=True,
-        help="Supabase project ref to scope evidence reads",
+        help="Promptetheus project ref to scope evidence reads",
     )
     mcp_install_p.add_argument(
         "--server-name",
@@ -260,7 +260,7 @@ def _cmd_mcp_install(
     print(f"  URL        : {url}")
     print(f"  workspace  : {workspace}")
     print(f"  project_ref: {project_ref}")
-    print("  access     : read-only Supabase evidence scoped to this project")
+    print("  access     : read-only Promptetheus evidence scoped to this project")
     print()
 
     if client == "codex":

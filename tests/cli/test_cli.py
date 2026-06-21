@@ -112,10 +112,10 @@ def test_mcp_install_codex_prints_hosted_stdio_bridge(capsys):
     )
     out = capsys.readouterr().out
     assert rc == 0
-    assert "https://mcp.promptetheus.dev/supabase/team%20alpha/abc123" in out
+    assert "https://mcp.promptetheus.dev/promptetheus/team%20alpha/abc123" in out
     assert '[mcp_servers."promptetheus"]' in out
     assert 'args = ["-y", "mcp-remote"' in out
-    assert "read-only Supabase evidence scoped to this project" in out
+    assert "read-only Promptetheus evidence scoped to this project" in out
 
 
 def test_mcp_install_cursor_prints_workspace_json(capsys):

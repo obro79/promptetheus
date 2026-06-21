@@ -1,4 +1,4 @@
-"""Hosted Promptetheus MCP server for incident-focused Supabase evidence.
+"""Hosted Promptetheus MCP server for incident-focused Promptetheus evidence.
 
 This module is intentionally dependency-light at import time. The optional
 ``mcp`` package is imported only by ``run()``, so the base SDK can be imported
@@ -46,7 +46,7 @@ def resolve_mcp_config(config: Config | None = None) -> MCPConfig:
             f"promptetheus mcp requires {joined}. Set the hosted Promptetheus "
             "API key via environment variables or ~/.promptetheus/config.toml. "
             "Use PROMPTETHEUS_API_URL only to override the hosted default. "
-            "Do not provide Supabase service-role keys."
+            "Do not provide database service-role keys."
         )
     return MCPConfig(api_url=api_url.rstrip("/"), api_key=api_key)
 
@@ -83,7 +83,7 @@ class PromptetheusAPIClient:
             ),
         )
 
-    def get_supabase_evidence(
+    def get_promptetheus_evidence(
         self,
         *,
         incident_id: str | None = None,
@@ -93,7 +93,7 @@ class PromptetheusAPIClient:
         limit: int = 20,
     ) -> dict[str, Any]:
         return self.post(
-            "/mcp/supabase/evidence",
+            "/mcp/promptetheus/evidence",
             _compact_payload(
                 {
                     "incident_id": incident_id,
@@ -105,7 +105,7 @@ class PromptetheusAPIClient:
             ),
         )
 
-    def search_supabase_logs(
+    def search_promptetheus_logs(
         self,
         *,
         service: str,
@@ -117,7 +117,7 @@ class PromptetheusAPIClient:
         limit: int = 20,
     ) -> dict[str, Any]:
         return self.post(
-            "/mcp/supabase/logs/search",
+            "/mcp/promptetheus/logs/search",
             _compact_payload(
                 {
                     "service": service,
@@ -131,7 +131,7 @@ class PromptetheusAPIClient:
             ),
         )
 
-    def get_supabase_advisors(
+    def get_promptetheus_advisors(
         self,
         *,
         advisor_type: str = "security",
@@ -139,7 +139,7 @@ class PromptetheusAPIClient:
         incident_id: str | None = None,
     ) -> dict[str, Any]:
         return self.post(
-            "/mcp/supabase/advisors",
+            "/mcp/promptetheus/advisors",
             _compact_payload(
                 {
                     "type": _safe_advisor_type(advisor_type),
@@ -287,16 +287,16 @@ def run() -> None:
         )
 
     @server.tool()
-    def get_supabase_evidence(
+    def get_promptetheus_evidence(
         incident_id: str | None = None,
         project_ref: str | None = None,
         session_id: str | None = None,
         services: list[str] | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Return hosted Supabase evidence for an incident without direct DB keys."""
+        """Return hosted Promptetheus evidence for an incident without direct DB keys."""
 
-        return client.get_supabase_evidence(
+        return client.get_promptetheus_evidence(
             incident_id=incident_id,
             project_ref=project_ref,
             session_id=session_id,
@@ -305,7 +305,7 @@ def run() -> None:
         )
 
     @server.tool()
-    def search_supabase_logs(
+    def search_promptetheus_logs(
         service: str,
         query: str | None = None,
         project_ref: str | None = None,
@@ -314,9 +314,9 @@ def run() -> None:
         end_time: str | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Search hosted Supabase logs related to an incident or project."""
+        """Search hosted Promptetheus logs related to an incident or project."""
 
-        return client.search_supabase_logs(
+        return client.search_promptetheus_logs(
             service=service,
             query=query,
             project_ref=project_ref,
@@ -327,14 +327,14 @@ def run() -> None:
         )
 
     @server.tool()
-    def get_supabase_advisors(
+    def get_promptetheus_advisors(
         advisor_type: str = "security",
         project_ref: str | None = None,
         incident_id: str | None = None,
     ) -> dict[str, Any]:
-        """Return hosted Supabase advisor findings relevant to an incident/project."""
+        """Return hosted Promptetheus advisor findings relevant to an incident/project."""
 
-        return client.get_supabase_advisors(
+        return client.get_promptetheus_advisors(
             advisor_type=advisor_type,
             project_ref=project_ref,
             incident_id=incident_id,

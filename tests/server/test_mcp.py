@@ -17,7 +17,7 @@ def test_resolve_mcp_config_requires_api_key() -> None:
     assert "PROMPTETHEUS_API_KEY" in message
     assert "PROMPTETHEUS_API_URL" in message
     assert "override the hosted default" in message
-    assert "Supabase service-role keys" in message
+    assert "database service-role keys" in message
 
 
 def test_resolve_mcp_config_uses_promptetheus_api_config() -> None:
@@ -54,7 +54,7 @@ def test_tool_request_posts_compact_json_and_adds_provenance(monkeypatch: pytest
     monkeypatch.setattr("promptetheus.server.mcp.urlopen", fake_urlopen)
     client = PromptetheusAPIClient("https://api.example.test", "pt_secret", timeout=3)
 
-    result = client.get_supabase_evidence(
+    result = client.get_promptetheus_evidence(
         incident_id="inc_123",
         project_ref=None,
         session_id="sess_123",
@@ -62,7 +62,7 @@ def test_tool_request_posts_compact_json_and_adds_provenance(monkeypatch: pytest
         limit=999,
     )
 
-    assert seen["url"] == "https://api.example.test/mcp/supabase/evidence"
+    assert seen["url"] == "https://api.example.test/mcp/promptetheus/evidence"
     assert seen["body"] == {
         "incident_id": "inc_123",
         "session_id": "sess_123",
@@ -103,7 +103,7 @@ def test_unavailable_error_becomes_safe_error_payload(monkeypatch: pytest.Monkey
     monkeypatch.setattr("promptetheus.server.mcp.urlopen", fake_urlopen)
     client = PromptetheusAPIClient("https://api.example.test", "pt_secret")
 
-    result = client.search_supabase_logs(
+    result = client.search_promptetheus_logs(
         service="postgres",
         query="permission denied",
         limit=999,
@@ -112,10 +112,10 @@ def test_unavailable_error_becomes_safe_error_payload(monkeypatch: pytest.Monkey
     assert result["ok"] is False
     assert result["status"] is None
     assert result["error"]["type"] == "unavailable"
-    assert result["source"]["url"] == "https://api.example.test/mcp/supabase/logs/search"
+    assert result["source"]["url"] == "https://api.example.test/mcp/promptetheus/logs/search"
 
 
-def test_supabase_advisors_includes_safe_type(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_promptetheus_advisors_includes_safe_type(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
     class Response:
@@ -137,6 +137,6 @@ def test_supabase_advisors_includes_safe_type(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("promptetheus.server.mcp.urlopen", fake_urlopen)
     client = PromptetheusAPIClient("https://api.example.test", "pt_secret")
 
-    client.get_supabase_advisors(advisor_type="performance", project_ref="abc123")
+    client.get_promptetheus_advisors(advisor_type="performance", project_ref="abc123")
 
     assert seen["body"] == {"type": "performance", "project_ref": "abc123"}

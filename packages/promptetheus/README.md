@@ -4,8 +4,6 @@ Promptetheus is debugging infrastructure for AI agents: a Python SDK, local
 replay tooling, hosted trace delivery, and MCP evidence access for coding
 agents that need to fix failing agent runs.
 
-![Promptetheus setup walkthrough](https://raw.githubusercontent.com/obro79/promptetheus/main/docs/assets/promptetheus-install.gif)
-
 ## What You Get
 
 - One trace per user-visible agent task.
@@ -440,7 +438,6 @@ uv run --project packages/promptetheus --extra dev pytest tests/sdk -q
 uv run --project packages/promptetheus --extra dev pytest tests/cli -q
 uv run --project packages/promptetheus --extra dev --extra server --extra mcp pytest tests/server/test_mcp.py -q
 uv run --project packages/promptetheus --extra dev mypy
-python scripts/generate_readme_gif.py
 ```
 
 Docs to read next:

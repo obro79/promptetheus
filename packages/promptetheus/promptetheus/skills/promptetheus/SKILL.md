@@ -50,30 +50,39 @@ Use this skill to add Promptetheus observability to an AI-agent codebase. Prompt
    - `session.error(exc, handled=True)` when an exception or recoverable failure matters.
    - `session.end("success")`, `session.end("failed")`, or let the context manager end the session automatically.
 
-5. Configure delivery.
+5. Configure delivery with the onboarding CLI.
 
-   Hosted Promptetheus is the default. For hosted ingestion, users only need
-   their project API key:
-
-   ```bash
-   export PROMPTETHEUS_API_KEY=pt_live_...
-   python your_agent.py
-   ```
-
-   To bootstrap a project key from the terminal, use the CLI after the SDK is installed:
+   Hosted Promptetheus is the default. After installing the SDK, bootstrap a
+   workspace/project key from the terminal:
 
    ```bash
    export PROMPTETHEUS_CONSOLE_TOKEN=...
    promptetheus init --workspace-name "My Team" --project-name "My Agent" --write-env .env
    ```
 
-   For local self-hosted development, the default dev console token can bootstrap a local key:
+   `promptetheus init` calls the Promptetheus API, creates or reuses the
+   workspace/project, generates a real project API key, stores only the key hash
+   server-side, prints the raw `pt_live_...` key once, and writes
+   `PROMPTETHEUS_API_KEY` to the requested env file when `--write-env` is used.
+   Do not invent a local API key for hosted ingestion; it must be registered by
+   the Promptetheus backend.
+
+   If the user already has a project key, they can set it directly:
+
+   ```bash
+   export PROMPTETHEUS_API_KEY=pt_live_...
+   python your_agent.py
+   ```
+
+   For local self-hosted development, bootstrap against the local FastAPI
+   gateway with the default dev console token:
 
    ```bash
    promptetheus init --api-url http://127.0.0.1:4318 --console-token pt_console_token --write-env .env
    ```
 
-   For self-hosted or local FastAPI, add an endpoint override:
+   For self-hosted or local FastAPI with an existing key, add an endpoint
+   override:
 
    ```bash
    export PROMPTETHEUS_API_URL=http://127.0.0.1:4318
@@ -81,7 +90,13 @@ Use this skill to add Promptetheus observability to an AI-agent codebase. Prompt
    python your_agent.py
    ```
 
-   Use `transport="auto"` by default. Use `transport="http"` only when an endpoint/API key are explicitly known and failing fast is desirable. Do not ask users for Supabase/Postgres connection strings in agent apps; SDK events should go to Promptetheus FastAPI ingestion, which writes to storage.
+   Use `transport="auto"` by default. With `PROMPTETHEUS_API_KEY` set, auto
+   transport delivers to hosted Promptetheus unless `PROMPTETHEUS_API_URL`
+   overrides it. Without an API key, auto transport safely spools locally. Use
+   `transport="http"` only when an endpoint/API key are explicitly known and
+   failing fast is desirable. Do not ask users for Supabase/Postgres connection
+   strings in agent apps; SDK events should go to Promptetheus FastAPI
+   ingestion, which writes to storage.
 
 6. Validate the setup.
    - Run the repo's narrow tests for the instrumented path.

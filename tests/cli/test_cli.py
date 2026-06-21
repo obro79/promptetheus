@@ -97,6 +97,112 @@ def test_doctor_never_leaks_api_key(capsys, monkeypatch, tmp_path):
     assert rc == 1
 
 
+def test_init_requires_console_token(capsys, monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    monkeypatch.delenv("PROMPTETHEUS_CONSOLE_TOKEN", raising=False)
+
+    rc = cli.main(["init"])
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert "no console token" in out.lower()
+    assert "pt_console_token" in out
+
+
+def test_init_bootstraps_project_and_writes_env(capsys, monkeypatch, tmp_path):
+    calls = []
+
+    def fake_post_json(url, payload, *, bearer_token, timeout=30.0):
+        calls.append((url, payload, bearer_token, timeout))
+        return 201, {
+            "workspace": {"id": "w1", "name": "Hackathon"},
+            "project": {"id": "p1", "name": "Browser Agent"},
+            "api_key": "pt_live_test_key",
+        }
+
+    monkeypatch.setattr(cli, "_post_json", fake_post_json)
+    env_file = tmp_path / ".env"
+
+    rc = cli.main(
+        [
+            "init",
+            "--api-url",
+            "http://127.0.0.1:4318",
+            "--console-token",
+            "console-token",
+            "--workspace-name",
+            "Hackathon",
+            "--project-name",
+            "Browser Agent",
+            "--agent-name",
+            "browser",
+            "--write-env",
+            str(env_file),
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert calls == [
+        (
+            "http://127.0.0.1:4318/api/onboarding/bootstrap",
+            {
+                "workspace_name": "Hackathon",
+                "project_name": "Browser Agent",
+                "agent_name": "browser",
+            },
+            "console-token",
+            30.0,
+        )
+    ]
+    assert "pt_live_test_key" in out
+    assert "PROMPTETHEUS_API_KEY='pt_live_test_key'" in env_file.read_text()
+    assert "PROMPTETHEUS_API_URL='http://127.0.0.1:4318'" in env_file.read_text()
+
+
+def test_init_writes_sdk_config(capsys, monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+
+    def fake_post_json(url, payload, *, bearer_token, timeout=30.0):
+        return 201, {
+            "workspace": {"name": "Team"},
+            "project": {"name": "Project"},
+            "api_key": "pt_live_config_key",
+        }
+
+    monkeypatch.setattr(cli, "_post_json", fake_post_json)
+    config_path = tmp_path / "config.toml"
+    monkeypatch.setattr(config_module, "DEFAULT_CONFIG_PATH", config_path)
+
+    rc = cli.main(["init", "--console-token", "console-token", "--write-config"])
+    out = capsys.readouterr().out
+    text = config_path.read_text(encoding="utf-8")
+
+    assert rc == 0
+    assert "Wrote SDK config" in out
+    assert 'api_key = "pt_live_config_key"' in text
+    assert 'api_url = "https://api-production-8a8a.up.railway.app"' in text
+
+
+def test_init_existing_project_without_raw_key_is_nonzero(capsys, monkeypatch):
+    def fake_post_json(url, payload, *, bearer_token, timeout=30.0):
+        return 200, {
+            "workspace": {"name": "Team"},
+            "project": {"name": "Project"},
+            "api_key": None,
+            "api_key_preview": "pt_live_...abcd",
+        }
+
+    monkeypatch.setattr(cli, "_post_json", fake_post_json)
+
+    rc = cli.main(["init", "--console-token", "console-token"])
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "raw API key is not recoverable" in out
+    assert "pt_live_...abcd" in out
+
+
 def test_mcp_install_codex_prints_hosted_stdio_bridge(capsys):
     rc = cli.main(
         [

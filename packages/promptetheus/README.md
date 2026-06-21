@@ -25,6 +25,21 @@ export PROMPTETHEUS_API_KEY=pt_live_...
 python your_agent.py
 ```
 
+To create/bootstrap a project key from the CLI, use `promptetheus init`.
+Hosted bootstrap requires a console token so the API can register the key hash
+against the right workspace:
+
+```bash
+export PROMPTETHEUS_CONSOLE_TOKEN=...
+promptetheus init --workspace-name "Hackathon" --project-name "Browser Agent" --write-env .env
+```
+
+For local self-hosted development:
+
+```bash
+promptetheus init --api-url http://127.0.0.1:4318 --console-token pt_console_token --write-env .env
+```
+
 With `transport="auto"`, the SDK sends to the hosted Promptetheus API when
 `PROMPTETHEUS_API_KEY` is set. Without a key, events are written to the local
 spool so instrumented agents keep running.

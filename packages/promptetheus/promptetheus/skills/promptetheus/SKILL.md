@@ -60,6 +60,19 @@ Use this skill to add Promptetheus observability to an AI-agent codebase. Prompt
    python your_agent.py
    ```
 
+   To bootstrap a project key from the terminal, use the CLI after the SDK is installed:
+
+   ```bash
+   export PROMPTETHEUS_CONSOLE_TOKEN=...
+   promptetheus init --workspace-name "My Team" --project-name "My Agent" --write-env .env
+   ```
+
+   For local self-hosted development, the default dev console token can bootstrap a local key:
+
+   ```bash
+   promptetheus init --api-url http://127.0.0.1:4318 --console-token pt_console_token --write-env .env
+   ```
+
    For self-hosted or local FastAPI, add an endpoint override:
 
    ```bash

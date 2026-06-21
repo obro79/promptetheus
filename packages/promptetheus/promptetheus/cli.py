@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
+from urllib import error, request
 from urllib.parse import quote
 
 # Host/port for the local FastAPI ingestion gateway (see CLAUDE.md "Ports").
@@ -126,6 +128,47 @@ def main(argv: list[str] | None = None) -> int:
         help=f"hosted MCP base URL (default {DEFAULT_MCP_BASE_URL})",
     )
     subparsers.add_parser("version", help="Print the installed Promptetheus version")
+    init_p = subparsers.add_parser(
+        "init",
+        help="Bootstrap a Promptetheus project and print a generated API key",
+    )
+    init_p.add_argument(
+        "--api-url",
+        default=None,
+        help="Promptetheus API URL (default: hosted API, or PROMPTETHEUS_API_URL)",
+    )
+    init_p.add_argument(
+        "--console-token",
+        default=None,
+        help="Console auth token (default: PROMPTETHEUS_CONSOLE_TOKEN)",
+    )
+    init_p.add_argument(
+        "--workspace-name",
+        default="Promptetheus Workspace",
+        help="Workspace name to create or reuse",
+    )
+    init_p.add_argument(
+        "--project-name",
+        default="Default Project",
+        help="Project name to create or reuse",
+    )
+    init_p.add_argument(
+        "--agent-name",
+        default=None,
+        help="Optional first agent name to associate with the project",
+    )
+    init_p.add_argument(
+        "--write-env",
+        nargs="?",
+        const=".env",
+        default=None,
+        help="Write PROMPTETHEUS_API_KEY and PROMPTETHEUS_API_URL to an env file",
+    )
+    init_p.add_argument(
+        "--write-config",
+        action="store_true",
+        help="Write api_key and api_url to ~/.promptetheus/config.toml",
+    )
     subparsers.add_parser(
         "doctor", help="Show resolved config, server reachability, spool backlog"
     )
@@ -201,6 +244,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "dev":
         _run_dev()
         return 0
+    if args.command == "init":
+        return _cmd_init(
+            api_url=args.api_url,
+            console_token=args.console_token,
+            workspace_name=args.workspace_name,
+            project_name=args.project_name,
+            agent_name=args.agent_name,
+            write_env=Path(args.write_env) if args.write_env else None,
+            write_config=args.write_config,
+        )
     if args.command == "mcp":
         if getattr(args, "mcp_command", None) == "install":
             return _cmd_mcp_install(
@@ -233,6 +286,207 @@ def main(argv: list[str] | None = None) -> int:
 
     parser.print_help()
     return 0
+
+
+# -- init -------------------------------------------------------------------
+
+
+def _cmd_init(
+    *,
+    api_url: str | None,
+    console_token: str | None,
+    workspace_name: str,
+    project_name: str,
+    agent_name: str | None,
+    write_env: Path | None,
+    write_config: bool,
+) -> int:
+    from .config import DEFAULT_API_URL, DEFAULT_CONFIG_PATH
+
+    resolved_api_url = (
+        api_url or os.environ.get("PROMPTETHEUS_API_URL") or DEFAULT_API_URL
+    ).rstrip("/")
+    resolved_token = console_token or os.environ.get("PROMPTETHEUS_CONSOLE_TOKEN")
+
+    if not resolved_token:
+        print("Cannot bootstrap: no console token configured.")
+        print("Set PROMPTETHEUS_CONSOLE_TOKEN or pass --console-token.")
+        print()
+        print("For local self-hosted development, the default dev token is:")
+        print(
+            "  promptetheus init --api-url http://127.0.0.1:4318 "
+            "--console-token pt_console_token"
+        )
+        return 2
+
+    payload = {
+        "workspace_name": workspace_name,
+        "project_name": project_name,
+    }
+    if agent_name:
+        payload["agent_name"] = agent_name
+
+    url = f"{resolved_api_url}/api/onboarding/bootstrap"
+    status, body = _post_json(url, payload, bearer_token=resolved_token)
+    if status < 200 or status >= 300:
+        print(f"Promptetheus bootstrap failed ({status}).")
+        detail = _response_detail(body)
+        if detail:
+            print(detail)
+        return 1
+
+    api_key = body.get("api_key") if isinstance(body, dict) else None
+    project = body.get("project") if isinstance(body, dict) else None
+    workspace = body.get("workspace") if isinstance(body, dict) else None
+    project_name_out = _named_value(project, fallback=project_name)
+    workspace_name_out = _named_value(workspace, fallback=workspace_name)
+
+    if not api_key:
+        preview = body.get("api_key_preview") if isinstance(body, dict) else None
+        print(
+            "Promptetheus project already exists, but the raw API key is not "
+            "recoverable."
+        )
+        if preview:
+            print(f"Existing key: {preview}")
+        print(
+            "Rotate the key in the dashboard, or create a new project name and "
+            "run init again."
+        )
+        return 1
+
+    print("Promptetheus project ready")
+    print(f"  API URL  : {resolved_api_url}")
+    print(f"  workspace: {workspace_name_out}")
+    print(f"  project  : {project_name_out}")
+    print()
+    print("Save this key; it is shown once:")
+    print(f"  {api_key}")
+    print()
+    print("For your shell:")
+    print(f"  export PROMPTETHEUS_API_KEY={_shell_quote(api_key)}")
+    if resolved_api_url != DEFAULT_API_URL:
+        print(f"  export PROMPTETHEUS_API_URL={_shell_quote(resolved_api_url)}")
+
+    if write_env is not None:
+        _write_env_file(write_env, api_url=resolved_api_url, api_key=api_key)
+        print(f"Wrote env vars to {write_env}.")
+    if write_config:
+        _write_config_file(
+            DEFAULT_CONFIG_PATH, api_url=resolved_api_url, api_key=api_key
+        )
+        print(f"Wrote SDK config to {DEFAULT_CONFIG_PATH}.")
+    return 0
+
+
+def _post_json(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    bearer_token: str,
+    timeout: float = 30.0,
+) -> tuple[int, dict[str, Any]]:
+    data = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {bearer_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return resp.status, json.loads(body) if body else {}
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return exc.code, _parse_json_object(body)
+    except error.URLError as exc:
+        return 0, {"detail": f"Could not reach {url}: {exc.reason}"}
+    except TimeoutError:
+        return 0, {"detail": f"Timed out connecting to {url}"}
+
+
+def _parse_json_object(text: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return {"detail": text} if text else {}
+    return parsed if isinstance(parsed, dict) else {"detail": parsed}
+
+
+def _response_detail(body: dict[str, Any]) -> str:
+    detail = body.get("detail")
+    if isinstance(detail, str):
+        return detail
+    if detail:
+        return json.dumps(detail)
+    return ""
+
+
+def _named_value(value: object, *, fallback: str) -> str:
+    if isinstance(value, dict):
+        name = value.get("name") or value.get("slug") or value.get("id")
+        if name:
+            return str(name)
+    return fallback
+
+
+def _shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _write_env_file(path: Path, *, api_url: str, api_key: str) -> None:
+    assignments = {
+        "PROMPTETHEUS_API_KEY": api_key,
+        "PROMPTETHEUS_API_URL": api_url,
+    }
+    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    seen: set[str] = set()
+    next_lines: list[str] = []
+    for line in existing:
+        stripped = line.lstrip()
+        key = stripped.split("=", 1)[0] if "=" in stripped else ""
+        if key in assignments and not stripped.startswith("#"):
+            next_lines.append(f"{key}={_env_quote(assignments[key])}")
+            seen.add(key)
+        else:
+            next_lines.append(line)
+    for key, value in assignments.items():
+        if key not in seen:
+            next_lines.append(f"{key}={_env_quote(value)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
+
+
+def _env_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _write_config_file(path: Path, *, api_url: str, api_key: str) -> None:
+    assignments = {
+        "api_url": api_url,
+        "api_key": api_key,
+    }
+    existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    seen: set[str] = set()
+    next_lines: list[str] = []
+    for line in existing:
+        stripped = line.strip()
+        key = stripped.split("=", 1)[0].strip() if "=" in stripped else ""
+        if key in assignments and not stripped.startswith("#"):
+            next_lines.append(f"{key} = {json.dumps(assignments[key])}")
+            seen.add(key)
+        else:
+            next_lines.append(line)
+    for key, value in assignments.items():
+        if key not in seen:
+            next_lines.append(f"{key} = {json.dumps(value)}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(next_lines) + "\n", encoding="utf-8")
 
 
 # -- mcp install ------------------------------------------------------------
